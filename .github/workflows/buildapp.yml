@@ -95,14 +95,30 @@ jobs:
               env:
                 THEOS: ${{ github.workspace }}/theos
 
-            - name: Fix code signature
+            - name: Fix binary structure
               run: |
                 cd main/packages
                 IPA=$(ls -t | head -n1)
                 unzip -q "$IPA" -d unpacked
+                
+                # Find the main app binary
+                APP=$(find unpacked/Payload -name "*.app" -maxdepth 1 -type d | head -n1)
+                BINARY="$APP/$(basename "$APP" .app)"
+                
+                echo "Fixing binary: $BINARY"
+                
+                # Strip all signatures from everything
                 find unpacked/Payload -name "*.app" -o -name "*.appex" -o -name "*.dylib" -o -name "*.framework" | while read f; do
                   codesign --remove-signature "$f" 2>/dev/null || true
                 done
+                
+                # Remove app extensions entirely to avoid bundle ID mismatch
+                rm -rf "$APP/PlugIns"
+                rm -rf "$APP/Watch"
+                
+                # Re-sign with ldid directly using a blank entitlements
+                ldid -S "$BINARY"
+                
                 cd unpacked
                 zip -qr "../${IPA}" Payload
                 cd ..
